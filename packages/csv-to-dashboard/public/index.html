@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSV to Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #4c78a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    main { padding: 24px 32px; max-width: 1100px; margin: 0 auto; }
+    .upload {
+      background: var(--panel);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .upload input { margin-top: 8px; }
+    #status { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+    }
+    .card h2 { margin: 0 0 4px; font-size: 15px; }
+    .card .meta { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    #output:empty::before {
+      content: "Choose a CSV file above to generate charts.";
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CSV to Dashboard</h1>
+    <p>Local, dependency-free: pick a CSV file and get auto-inferred column types and charts.</p>
+  </header>
+  <main>
+    <div class="upload">
+      <label for="file">Select a CSV file</label><br />
+      <input id="file" type="file" accept=".csv,text/csv" />
+      <div id="status"></div>
+    </div>
+    <div id="output"></div>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

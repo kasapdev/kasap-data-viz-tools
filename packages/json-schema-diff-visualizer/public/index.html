@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSON Schema Diff Visualizer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --added-bg: #ecfdf3;
+      --added-text: #027a48;
+      --removed-bg: #fef3f2;
+      --removed-text: #b42318;
+      --changed-bg: #fffaeb;
+      --changed-text: #b54708;
+      --unchanged-text: #374151;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    main { padding: 24px 32px; max-width: 1000px; margin: 0 auto; }
+    .inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .input-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .input-card h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    #status { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+    #tree {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+    }
+    .node { margin: 2px 0; }
+    .node-row { display: flex; align-items: baseline; gap: 6px; cursor: default; }
+    .node-row.has-children { cursor: pointer; }
+    .toggle {
+      width: 14px;
+      display: inline-block;
+      color: var(--muted);
+      user-select: none;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.added { background: var(--added-bg); color: var(--added-text); }
+    .badge.removed { background: var(--removed-bg); color: var(--removed-text); }
+    .badge.type-changed, .badge.constraint-changed { background: var(--changed-bg); color: var(--changed-text); }
+    .badge.unchanged { background: transparent; color: var(--unchanged-text); }
+    .key.added { color: var(--added-text); }
+    .key.removed { color: var(--removed-text); }
+    .key.type-changed, .key.constraint-changed { color: var(--changed-text); }
+    .key.unchanged { color: var(--unchanged-text); }
+    .changes { color: var(--muted); font-size: 12px; margin-left: 4px; }
+    .children { margin-left: 18px; border-left: 1px solid var(--border); padding-left: 10px; }
+    .children[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>JSON Schema Diff Visualizer</h1>
+    <p>Load two JSON Schema (or plain JSON) files and see a colored, expandable structural diff.</p>
+  </header>
+  <main>
+    <div class="inputs">
+      <div class="input-card">
+        <h2>Left (A)</h2>
+        <input id="fileA" type="file" accept=".json,application/json" />
+      </div>
+      <div class="input-card">
+        <h2>Right (B)</h2>
+        <input id="fileB" type="file" accept=".json,application/json" />
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--added-text)"></span> added</span>
+      <span><span class="swatch" style="background:var(--removed-text)"></span> removed</span>
+      <span><span class="swatch" style="background:var(--changed-text)"></span> type/constraint changed</span>
+      <span><span class="swatch" style="background:var(--unchanged-text)"></span> unchanged</span>
+    </div>
+    <div id="status">Load both files to compute a diff.</div>
+    <div id="tree"></div>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
