@@ -42,3 +42,47 @@ describe("summarizeLog (generic app log fixture)", () => {
     ]);
   });
 });
+
+describe("summarizeLog limit option", () => {
+  // 15 distinct offending IPs -- more than the top-N default of 10, so this
+  // fixture can actually distinguish "capped at 10" from "capped at limit".
+  const MANY_IPS_LOG = Array.from(
+    { length: 15 },
+    (_, i) => `10.0.0.${i} - - [10/Oct/2023:13:00:00 +0000] "GET /x HTTP/1.1" 404 0 "-" "-"`,
+  ).join("\n");
+
+  it("defaults topOffendingIps/topErrors to the top 10 when no limit is given", () => {
+    const summary = summarizeLog(MANY_IPS_LOG.split("\n"));
+    expect(summary.topOffendingIps).toHaveLength(10);
+  });
+
+  it("honors a limit greater than 10, previously impossible since summarizeLog ignored --limit entirely", () => {
+    const summary = summarizeLog(MANY_IPS_LOG.split("\n"), undefined, { limit: 15 });
+    expect(summary.topOffendingIps).toHaveLength(15);
+  });
+
+  it("honors a limit smaller than 10", () => {
+    const summary = summarizeLog(MANY_IPS_LOG.split("\n"), undefined, { limit: 3 });
+    expect(summary.topOffendingIps).toHaveLength(3);
+  });
+
+  it("applies the same limit to topErrors", () => {
+    const words = [
+      "alpha",
+      "bravo",
+      "charlie",
+      "delta",
+      "echo",
+      "foxtrot",
+      "golf",
+      "hotel",
+      "india",
+      "juliet",
+      "kilo",
+      "lima",
+    ];
+    const manyErrorsLog = words.map((w) => `2024-01-01T09:00:00Z ERROR failure kind ${w}`).join("\n");
+    const summary = summarizeLog(manyErrorsLog.split("\n"), undefined, { limit: 12 });
+    expect(summary.topErrors).toHaveLength(12);
+  });
+});
