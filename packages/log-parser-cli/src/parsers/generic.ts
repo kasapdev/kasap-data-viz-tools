@@ -21,9 +21,17 @@ const LEVEL_WORDS_BY_LENGTH = [...LEVEL_WORDS].sort((a, b) => b.length - a.lengt
 
 // e.g. "2024-01-15T10:30:00.123Z ERROR Failed to connect" or
 //      "2024-01-15 10:30:00 [WARN] Cache miss for key abc123"
+//
+// The level segment is wrapped in its own optional (non-capturing) group so
+// that a line with a recognizable timestamp but no level word (e.g.
+// "2024-01-01T00:00:00Z server started") still has its timestamp extracted,
+// instead of the whole match failing and falling back to "raw line as
+// message, no timestamp". The trailing `\b` after the level alternation
+// stops a word like "ERRORS" from being misread as the level "ERROR" with
+// a dangling "S ..." left in the message.
 const GENERIC_PATTERN = new RegExp(
   `^(\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?)` +
-    `\\s*[:\\-]?\\s*\\[?(${LEVEL_WORDS_BY_LENGTH.join("|")})]?\\s*[:\\-]?\\s*(.*)$`,
+    `\\s*[:\\-]?\\s*(?:\\[?(${LEVEL_WORDS_BY_LENGTH.join("|")})\\b]?\\s*[:\\-]?\\s*)?(.*)$`,
 );
 
 /** Parse a single generic app-log line. Always returns an entry (never null). */

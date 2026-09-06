@@ -28,4 +28,25 @@ describe("parseGenericLine", () => {
       expect(entry.level).toBe(level);
     }
   });
+
+  it("still extracts the timestamp when no level word is present", () => {
+    const entry = parseGenericLine("2024-01-01T00:00:00Z server started successfully");
+    expect(entry.timestamp).toBeInstanceOf(Date);
+    expect(entry.level).toBeUndefined();
+    expect(entry.message).toBe("server started successfully");
+  });
+
+  it("still extracts the timestamp when the separator has no level word", () => {
+    const entry = parseGenericLine("2024-01-01T00:00:00Z - something happened");
+    expect(entry.timestamp).toBeInstanceOf(Date);
+    expect(entry.level).toBeUndefined();
+    expect(entry.message).toBe("something happened");
+  });
+
+  it("does not mistake a word merely prefixed by a level word for that level", () => {
+    const entry = parseGenericLine("2024-01-01T00:00:00Z ERRORS occurred while doing X");
+    expect(entry.timestamp).toBeInstanceOf(Date);
+    expect(entry.level).toBeUndefined();
+    expect(entry.message).toBe("ERRORS occurred while doing X");
+  });
 });
