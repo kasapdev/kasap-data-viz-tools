@@ -40,13 +40,20 @@ program
       format = opts.format as LogFormat;
     }
 
+    const limit = Number.parseInt(opts.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      console.error(`Error: --limit must be a positive integer (got "${opts.limit}").`);
+      process.exitCode = 1;
+      return;
+    }
+
     const lines = text.split(/\r?\n/);
-    const summary = summarizeLog(lines, format);
+    const summary = summarizeLog(lines, format, { limit });
 
     if (opts.json) {
       console.log(JSON.stringify(summary, null, 2));
     } else {
-      printReport(summary, Number.parseInt(opts.limit, 10) || 10);
+      printReport(summary, limit);
     }
   });
 
@@ -65,7 +72,7 @@ function printReport(summary: LogSummary, limit: number): void {
 
   if (summary.topErrors.length > 0) {
     console.log(`Top error messages (normalized, top ${limit}):`);
-    for (const group of summary.topErrors.slice(0, limit)) {
+    for (const group of summary.topErrors) {
       console.log(`  [${group.count}] ${group.normalized}`);
       console.log(`        e.g. "${group.example}"`);
     }
@@ -83,7 +90,7 @@ function printReport(summary: LogSummary, limit: number): void {
 
   if (summary.topOffendingIps.length > 0) {
     console.log(`Top offending IPs (4xx/5xx, top ${limit}):`);
-    for (const offender of summary.topOffendingIps.slice(0, limit)) {
+    for (const offender of summary.topOffendingIps) {
       console.log(`  [${offender.count}] ${offender.value}`);
     }
     console.log();
@@ -91,7 +98,7 @@ function printReport(summary: LogSummary, limit: number): void {
 
   if (summary.topOffendingPaths.length > 0) {
     console.log(`Top offending paths (4xx/5xx, top ${limit}):`);
-    for (const offender of summary.topOffendingPaths.slice(0, limit)) {
+    for (const offender of summary.topOffendingPaths) {
       console.log(`  [${offender.count}] ${offender.value}`);
     }
   }
