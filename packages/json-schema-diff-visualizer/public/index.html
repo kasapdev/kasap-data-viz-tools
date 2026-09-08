@@ -19,6 +19,9 @@
       --changed-bg: #fffaeb;
       --changed-text: #b54708;
       --unchanged-text: #374151;
+      --breaking-bg: #fef3f2;
+      --breaking-text: #912018;
+      --breaking-border: #f97066;
     }
     * { box-sizing: border-box; }
     body {
@@ -95,6 +98,13 @@
     .changes { color: var(--muted); font-size: 12px; margin-left: 4px; }
     .children { margin-left: 18px; border-left: 1px solid var(--border); padding-left: 10px; }
     .children[hidden] { display: none; }
+    .badge.breaking {
+      background: var(--breaking-bg);
+      color: var(--breaking-text);
+      border: 1px solid var(--breaking-border);
+    }
+    #summary { font-size: 13px; margin-bottom: 12px; }
+    #summary .breaking-count { color: var(--breaking-text); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -118,8 +128,10 @@
       <span><span class="swatch" style="background:var(--removed-text)"></span> removed</span>
       <span><span class="swatch" style="background:var(--changed-text)"></span> type/constraint changed</span>
       <span><span class="swatch" style="background:var(--unchanged-text)"></span> unchanged</span>
+      <span><span class="swatch" style="background:var(--breaking-text)"></span> breaking</span>
     </div>
     <div id="status">Load both files to compute a diff.</div>
+    <div id="summary"></div>
     <div id="tree"></div>
   </main>
   <script type="module" src="/app.js"></script>

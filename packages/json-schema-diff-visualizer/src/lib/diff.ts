@@ -20,6 +20,15 @@ export interface DiffNode {
   rightType?: string | string[];
   /** Human-readable descriptions of constraint changes at this node. */
   changes: string[];
+  /**
+   * Whether *this node's own* change (not its descendants') is a
+   * backward-incompatible change under JSON Schema semantics -- i.e. some
+   * document that validated against the left schema could fail to validate
+   * against the right schema. See `isTypeChangeBreaking`, `isConstraintBreaking`,
+   * and the `required`-handling in `diffNode` for the exact rules.
+   * Always `false` for "unchanged" nodes.
+   */
+  breaking: boolean;
   children: DiffNode[];
 }
 
@@ -54,9 +63,12 @@ function diffNode(
   right: MinimalSchema | undefined,
   key: string,
   path: string,
+  /** Was `key` listed in the *parent* schema's `required` array on each side? Irrelevant (left false) for the root node and array-items nodes, which have no parent `required` list. */
+  leftRequiredInParent = false,
+  rightRequiredInParent = false,
 ): DiffNode {
   if (left === undefined && right === undefined) {
-    return { path, key, status: "unchanged", changes: [], children: [] };
+    return { path, key, status: "unchanged", changes: [], breaking: false, children: [] };
   }
   if (left === undefined) {
     return {
@@ -65,6 +77,9 @@ function diffNode(
       status: "added",
       rightType: right?.type,
       changes: [],
+      // Adding a new required field is breaking (existing documents that
+      // never had it now fail validation); adding an optional field isn't.
+      breaking: rightRequiredInParent,
       children: subtreeForOneSide(right, "added", path),
     };
   }
@@ -75,6 +90,9 @@ function diffNode(
       status: "removed",
       leftType: left.type,
       changes: [],
+      // Removing a field that was required is breaking; removing an
+      // optional field is not (nothing depended on it being present).
+      breaking: leftRequiredInParent,
       children: subtreeForOneSide(left, "removed", path),
     };
   }
@@ -87,13 +105,28 @@ function diffNode(
     changes.push(`type: ${describeType(left.type)} -> ${describeType(right.type)}`);
   }
 
+  let constraintBreaking = false;
   for (const constraintKey of CONSTRAINT_KEYS) {
     const lv = left[constraintKey];
     const rv = right[constraintKey];
     if (!deepEqual(lv, rv)) {
       changes.push(`${constraintKey}: ${describeValue(lv)} -> ${describeValue(rv)}`);
+      if (constraintKey !== "required" && isConstraintBreaking(constraintKey, lv, rv)) {
+        constraintBreaking = true;
+      }
     }
   }
+
+  // "required" is intentionally excluded from the generic constraint-value
+  // comparison above: a raw array-equality check can't tell *which
+  // direction* it changed. Instead, each property's own required-ness is
+  // evaluated where that property is diffed (below, and at the top of this
+  // function for added/removed nodes) via `leftRequiredInParent` /
+  // `rightRequiredInParent`, computed from *this* node's `required` array
+  // when recursing into `properties`. The property itself flipping from
+  // optional-or-absent to required in its parent's required list is
+  // breaking; the reverse (required -> optional) is a safe relaxation.
+  const parentRequiredBreaking = !leftRequiredInParent && rightRequiredInParent;
 
   const children: DiffNode[] = [];
 
@@ -106,6 +139,8 @@ function diffNode(
           right.properties?.[propKey],
           propKey,
           `${path}.properties.${propKey}`,
+          (left.required ?? []).includes(propKey),
+          (right.required ?? []).includes(propKey),
         ),
       );
     }
@@ -124,10 +159,20 @@ function diffNode(
     status = "unchanged";
   }
 
-  return { path, key, status, leftType: left.type, rightType: right.type, changes, children };
+  const breaking =
+    (typeChanged && isTypeChangeBreaking(leftTypes, rightTypes)) || constraintBreaking || parentRequiredBreaking;
+
+  return { path, key, status, leftType: left.type, rightType: right.type, changes, breaking, children };
 }
 
-/** Recursively mark an entire subtree as added or removed (used when a node exists on only one side). */
+/**
+ * Recursively mark an entire subtree as added or removed (used when a node
+ * exists on only one side). These descendants are never independently
+ * `breaking`: the single top-level added/removed node already captures
+ * whether the containing property's (dis)appearance breaks the contract,
+ * and that top-level node is not produced by this function -- see
+ * `diffNode`'s `left === undefined` / `right === undefined` branches.
+ */
 function subtreeForOneSide(schema: MinimalSchema | undefined, status: "added" | "removed", path: string): DiffNode[] {
   if (!schema) return [];
   const children: DiffNode[] = [];
@@ -142,6 +187,7 @@ function subtreeForOneSide(schema: MinimalSchema | undefined, status: "added" | 
         leftType: status === "removed" ? v.type : undefined,
         rightType: status === "added" ? v.type : undefined,
         changes: [],
+        breaking: false,
         children: subtreeForOneSide(v, status, childPath),
       });
     }
@@ -156,6 +202,7 @@ function subtreeForOneSide(schema: MinimalSchema | undefined, status: "added" | 
       leftType: status === "removed" ? schema.items.type : undefined,
       rightType: status === "added" ? schema.items.type : undefined,
       changes: [],
+      breaking: false,
       children: subtreeForOneSide(schema.items, status, childPath),
     });
   }
@@ -178,6 +225,132 @@ export function summarizeDiff(root: DiffNode): Record<DiffStatus, number> {
   };
   visit(root);
   return counts;
+}
+
+/**
+ * Recursively collect every node whose *own* change is breaking (see
+ * `DiffNode.breaking`), in document order. Useful for CI gating or for a
+ * "breaking changes only" view.
+ */
+export function collectBreakingChanges(root: DiffNode): DiffNode[] {
+  const found: DiffNode[] = [];
+  const visit = (node: DiffNode) => {
+    if (node.breaking) found.push(node);
+    node.children.forEach(visit);
+  };
+  visit(root);
+  return found;
+}
+
+/** Whether the diff tree contains at least one backward-incompatible change anywhere. */
+export function isBreakingChange(root: DiffNode): boolean {
+  if (root.breaking) return true;
+  return root.children.some(isBreakingChange);
+}
+
+/** Count of breaking vs. non-breaking *changed* nodes across the whole tree (unchanged nodes are excluded from both). */
+export function summarizeBreaking(root: DiffNode): { breaking: number; nonBreaking: number } {
+  let breaking = 0;
+  let nonBreaking = 0;
+  const visit = (node: DiffNode) => {
+    if (node.status !== "unchanged") {
+      if (node.breaking) breaking += 1;
+      else nonBreaking += 1;
+    }
+    node.children.forEach(visit);
+  };
+  visit(root);
+  return { breaking, nonBreaking };
+}
+
+/**
+ * Is a `type` change backward-incompatible? Treats a missing `type` as
+ * "unconstrained" (broadest possible set, matches any value) rather than
+ * an empty set, since JSON Schema treats an absent `type` keyword as
+ * imposing no type restriction at all.
+ *  - Unconstrained -> constrained, or a proper narrowing of an existing
+ *    type set (e.g. `["string","number"]` -> `["string"]`): breaking.
+ *  - Constrained -> unconstrained, or a proper widening (e.g. `"string"`
+ *    -> `["string","number"]`): non-breaking.
+ *  - Anything else (partial overlap or fully disjoint types, e.g.
+ *    `"string"` -> `"integer"`): breaking, since some previously-valid
+ *    values are no longer valid.
+ */
+function isTypeChangeBreaking(leftTypes: string[], rightTypes: string[]): boolean {
+  if (leftTypes.length === 0) return rightTypes.length > 0; // was unconstrained
+  if (rightTypes.length === 0) return false; // became unconstrained
+  if (isSubset(rightTypes, leftTypes)) return true; // narrowed (proper subset, since sets already differ)
+  if (isSubset(leftTypes, rightTypes)) return false; // widened
+  return true; // disjoint or partial overlap
+}
+
+function isSubset(a: string[], b: string[]): boolean {
+  return a.every((v) => b.includes(v));
+}
+
+/** Is a change to a single constraint keyword (other than `required`, handled separately) backward-incompatible? */
+function isConstraintBreaking(key: string, leftValue: unknown, rightValue: unknown): boolean {
+  switch (key) {
+    case "minimum":
+    case "exclusiveMinimum":
+    case "minLength":
+    case "minItems":
+      return isStricterLowerBound(leftValue, rightValue);
+    case "maximum":
+    case "exclusiveMaximum":
+    case "maxLength":
+    case "maxItems":
+      return isStricterUpperBound(leftValue, rightValue);
+    case "pattern":
+    case "format":
+      // Adding or changing the pattern/format restricts which values pass;
+      // removing it (rightValue undefined) relaxes the restriction.
+      return rightValue !== undefined;
+    case "uniqueItems":
+      return rightValue === true && leftValue !== true;
+    case "enum":
+      return isEnumBreaking(leftValue, rightValue);
+    case "const":
+      // Adding/changing a const pins the value to exactly one option;
+      // removing it (rightValue undefined) relaxes the restriction.
+      return rightValue !== undefined;
+    case "default":
+    case "description":
+      // Pure metadata/documentation -- never restricts which values validate.
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** True if `right` raises the floor (or introduces one) relative to `left`, i.e. `minimum`/`minLength`/`minItems`/`exclusiveMinimum` getting stricter. */
+function isStricterLowerBound(left: unknown, right: unknown): boolean {
+  if (typeof right !== "number") return false; // bound removed or non-numeric: not a stricter lower bound
+  if (typeof left !== "number") return true; // no previous bound -> now bounded
+  return right > left;
+}
+
+/** True if `right` lowers the ceiling (or introduces one) relative to `left`, i.e. `maximum`/`maxLength`/`maxItems`/`exclusiveMaximum` getting stricter. */
+function isStricterUpperBound(left: unknown, right: unknown): boolean {
+  if (typeof right !== "number") return false;
+  if (typeof left !== "number") return true;
+  return right < left;
+}
+
+/**
+ * Is an `enum` change backward-incompatible? An enum change is a *safe
+ * relaxation* only when every previously-allowed value is still allowed
+ * (i.e. the old enum is a subset of the new one, or the enum was removed
+ * entirely). Anything that drops an option -- even while adding others --
+ * can reject previously-valid documents, so it's treated as breaking.
+ */
+function isEnumBreaking(left: unknown, right: unknown): boolean {
+  const leftArr = Array.isArray(left) ? left : undefined;
+  const rightArr = Array.isArray(right) ? right : undefined;
+  if (leftArr === undefined) return rightArr !== undefined; // enum newly introduced -> restricts
+  if (rightArr === undefined) return false; // enum removed -> relaxes
+  const leftStillAllowed = leftArr.every((lv) => rightArr.some((rv) => deepEqual(lv, rv)));
+  return !leftStillAllowed;
 }
 
 function normalizeType(type: string | string[] | undefined): string[] {

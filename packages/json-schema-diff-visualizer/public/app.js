@@ -1,8 +1,9 @@
-import { diffSchemas } from "/lib/diff.js";
+import { diffSchemas, summarizeBreaking } from "/lib/diff.js";
 
 const fileAInput = document.getElementById("fileA");
 const fileBInput = document.getElementById("fileB");
 const statusEl = document.getElementById("status");
+const summaryEl = document.getElementById("summary");
 const treeEl = document.getElementById("tree");
 
 let docA = null;
@@ -28,6 +29,23 @@ function maybeRenderDiff() {
   if (docA === null || docB === null) return;
   const tree = diffSchemas(docA, docB);
   statusEl.textContent = "Diff computed.";
+
+  const { breaking, nonBreaking } = summarizeBreaking(tree);
+  summaryEl.innerHTML = "";
+  if (breaking > 0) {
+    const span = document.createElement("span");
+    span.className = "breaking-count";
+    span.textContent = `${breaking} breaking change${breaking === 1 ? "" : "s"}`;
+    summaryEl.appendChild(span);
+    if (nonBreaking > 0) {
+      summaryEl.appendChild(document.createTextNode(`, ${nonBreaking} non-breaking change${nonBreaking === 1 ? "" : "s"}`));
+    }
+  } else if (nonBreaking > 0) {
+    summaryEl.textContent = `${nonBreaking} non-breaking change${nonBreaking === 1 ? "" : "s"}, no breaking changes.`;
+  } else {
+    summaryEl.textContent = "No changes.";
+  }
+
   treeEl.innerHTML = "";
   treeEl.appendChild(renderNode(tree, true));
 }
@@ -53,6 +71,13 @@ function renderNode(node, expanded) {
   badge.className = `badge ${node.status}`;
   badge.textContent = node.status;
   row.appendChild(badge);
+
+  if (node.breaking) {
+    const breakingBadge = document.createElement("span");
+    breakingBadge.className = "badge breaking";
+    breakingBadge.textContent = "breaking";
+    row.appendChild(breakingBadge);
+  }
 
   if (node.changes.length > 0) {
     const changes = document.createElement("span");
